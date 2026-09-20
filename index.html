@@ -1,0 +1,71 @@
+class FVGStrategyBot:
+    def __init__(self):
+        print("Inicijalizacija FVG & Liquidity Sweep bota...")
+
+    def analyze_market(self, candles):
+        """
+        candles: lista rečnika ili objekata sa ključevima ['open', 'high', 'low', 'close']
+        poslednja sveća u listi je trenutna/poslednja zatvorena.
+        """
+        if len(candles) < 25:
+            return {"status": "SACEKAJ", "reason": "Nema dovoljno podataka za swing analizu."}
+
+        # 1. Definisanje likvidnosti (prethodni swing vrhovi i dna)
+        lookback = 20
+        recent_candles = candles[-lookback-1:-1]
+        swing_high = max(c['high'] for c in recent_candles)
+        swing_low = min(c['low'] for c in recent_candles)
+
+        current_candle = candles[-1]
+        prev_candle = candles[-2]
+        prev_prev_candle = candles[-3]
+
+        # 2. Provera Liquidity Sweep-a
+        # Bullish sweep: probijen donji swing nivo, ali cena zatvara iznad njega
+        bullish_sweep = current_candle['low'] < swing_low and current_candle['close'] > swing_low
+        # Bearish sweep: probijen gornji swing nivo, ali cena zatvara ispod njega
+        bearish_sweep = current_candle['high'] > swing_high and current_candle['close'] < swing_high
+
+        # 3. Provera Fair Value Gap-a (FVG)
+        # Bullish FVG: low trenutne/skorašnje sveće je viši od high-a sveće pre 2 mesta
+        is_bullish_fvg = current_candle['low'] > prev_prev_candle['high']
+        is_bearish_fvg = current_candle['high'] < prev_prev_candle['low']
+
+        # 4. Donošenje odluke
+        if bullish_sweep and is_bullish_fvg:
+            entry_price = current_candle['close']
+            stop_loss = swing_low - 0.5  # Malo ispod sweep nivoa
+            take_profit = entry_price + (entry_price - stop_loss) * 2  # RR 1:2
+            return {
+                "status": "SIGNAL",
+                "action": "BUY",
+                "entry": entry_price,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+                "reason": "Detektovan Bullish Liquidity Sweep i FVG!"
+            }
+
+        elif bearish_sweep and is_bearish_fvg:
+            entry_price = current_candle['close']
+            stop_loss = swing_high + 0.5  # Malo iznad sweep nivoa
+            take_profit = entry_price - (stop_loss - entry_price) * 2  # RR 1:2
+            return {
+                "status": "SIGNAL",
+                "action": "SELL",
+                "entry": entry_price,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+                "reason": "Detektovan Bearish Liquidity Sweep i FVG!"
+            }
+
+        else:
+            return {
+                "status": "SACEKAJ",
+                "reason": "Nema poklapanja sweep-a i FVG-a. Tržište u rasponu."
+            }
+
+# Primer testiranja
+if __name__ == "__main__":
+    bot = FVGStrategyBot()
+    # Ovde ćemo kasnije ubaciti realne podatke sa API-ja ili MT5/TradingView webhook-a
+    print("Bot je spreman za rad na GitHub-u.")
